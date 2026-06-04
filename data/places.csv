@@ -1,0 +1,4 @@
+name,category,address,lat,lon,website,map_url,image_url,image_credit,notes
+Airbnb Loft,Lodging,498 W Main St Sylva NC,35.373,-83.225,,https://www.google.com/maps/search/?api=1&query=498+W+Main+St+Sylva+NC,,,"Home base"
+Balsam Falls Brewing,Brewery,506 W Main St Sylva NC,,,,https://balsamfallsbrewing.com/,https://www.google.com/maps/search/?api=1&query=Balsam+Falls+Brewing+506+W+Main+Street+Sylva+NC,,,"Closest brewery"
+Bridge Park,Event,76 Railroad Ave Sylva NC,,,,https://www.mainstreetsylva.org/2026/06/05/232573/concerts-on-the-creek-the-v8s,https://www.google.com/maps/search/?api=1&query=Bridge+Park+76+Railroad+Ave+Sylva+NC,,,"Concerts on the Creek"
