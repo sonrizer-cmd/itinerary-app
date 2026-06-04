@@ -1,12 +1,36 @@
 import html
+from typing import Optional
+
+import gspread
 import pandas as pd
 import streamlit as st
+from google.oauth2.service_account import Credentials
+
 
 st.set_page_config(
     page_title="Sylva Weekend Itinerary",
     page_icon="🏔️",
     layout="centered"
 )
+
+# -------------------------
+# App settings
+# -------------------------
+
+SHEET_ID = "1EVohk4RDve5QxR-xZQvJ9CR3X49rVfClFcQUEAo7upU"
+
+REQUIRED_ITINERARY_COLUMNS = [
+    "day", "time", "title", "category", "place_name", "description", "priority"
+]
+
+REQUIRED_PLACES_COLUMNS = [
+    "name", "category", "address", "lat", "lon", "website",
+    "map_url", "image_url", "image_credit", "notes"
+]
+
+REQUIRED_PACKING_COLUMNS = [
+    "item", "category", "packed", "notes"
+]
 
 # -------------------------
 # Custom styling
@@ -200,23 +224,24 @@ st.markdown(
 )
 
 # -------------------------
-# Helper functions
+# General helpers
 # -------------------------
 
-def safe_read_csv(path: str) -> pd.DataFrame:
-    try:
-        return pd.read_csv(path).fillna("")
-    except Exception as e:
-        st.error(f"Could not load {path}")
-        st.exception(e)
-        return pd.DataFrame()
-
-
 def text(value) -> str:
-    """Safely convert values to display text and escape HTML."""
     if value is None:
         return ""
     return html.escape(str(value))
+
+
+def safe_read_csv(path: str, expected_columns: list[str]) -> pd.DataFrame:
+    try:
+        df = pd.read_csv(path).fillna("")
+        for col in expected_columns:
+            if col not in df.columns:
+                df[col] = ""
+        return df[expected_columns]
+    except Exception:
+        return pd.DataFrame(columns=expected_columns)
 
 
 def place_button(label: str, url: str):
@@ -224,7 +249,92 @@ def place_button(label: str, url: str):
         st.link_button(label, url)
 
 
-def get_place(place_name: str):
+# -------------------------
+# Google Sheets helpers
+# -------------------------
+
+@st.cache_resource
+def get_gspread_client():
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+
+    credentials = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=scopes
+    )
+
+    return gspread.authorize(credentials)
+
+
+def get_worksheet(sheet_name: str):
+    client = get_gspread_client()
+    spreadsheet = client.open_by_key(SHEET_ID)
+    return spreadsheet.worksheet(sheet_name)
+
+
+def worksheet_to_df(sheet_name: str, expected_columns: list[str]) -> pd.DataFrame:
+    worksheet = get_worksheet(sheet_name)
+    records = worksheet.get_all_records()
+    df = pd.DataFrame(records)
+
+    if df.empty:
+        df = pd.DataFrame(columns=expected_columns)
+
+    for col in expected_columns:
+        if col not in df.columns:
+            df[col] = ""
+
+    return df[expected_columns].fillna("")
+
+
+def append_itinerary_event(event: dict):
+    worksheet = get_worksheet("itinerary")
+    row = [event.get(col, "") for col in REQUIRED_ITINERARY_COLUMNS]
+    worksheet.append_row(row, value_input_option="USER_ENTERED")
+
+
+def load_data_from_google_sheets():
+    itinerary_df = worksheet_to_df("itinerary", REQUIRED_ITINERARY_COLUMNS)
+    places_df = worksheet_to_df("places", REQUIRED_PLACES_COLUMNS)
+    packing_df = worksheet_to_df("packing", REQUIRED_PACKING_COLUMNS)
+    return itinerary_df, places_df, packing_df
+
+
+def load_data():
+    """
+    Prefer Google Sheets. Fall back to local CSVs if Google Sheets is unavailable.
+    """
+    try:
+        itinerary_df, places_df, packing_df = load_data_from_google_sheets()
+        return itinerary_df, places_df, packing_df, "Google Sheets"
+    except Exception as e:
+        st.sidebar.warning("Using local CSV backup.")
+        st.sidebar.caption(f"Google Sheets issue: {e}")
+
+        itinerary_df = safe_read_csv("data/itinerary.csv", REQUIRED_ITINERARY_COLUMNS)
+        places_df = safe_read_csv("data/places.csv", REQUIRED_PLACES_COLUMNS)
+        packing_df = safe_read_csv("data/packing.csv", REQUIRED_PACKING_COLUMNS)
+
+        return itinerary_df, places_df, packing_df, "local CSV backup"
+
+
+def clear_sheet_cache():
+    st.cache_resource.clear()
+
+
+# -------------------------
+# Load data
+# -------------------------
+
+itinerary, places, packing, data_source = load_data()
+
+# -------------------------
+# Data helpers
+# -------------------------
+
+def get_place(place_name: str) -> Optional[pd.Series]:
     if places.empty or not place_name:
         return None
 
@@ -270,14 +380,7 @@ def show_day(day_name: str, emoji: str):
         )
 
     if itinerary.empty:
-        st.write("No itinerary data loaded.")
-        return
-
-    required_columns = {"day", "time", "title", "category", "place_name", "description"}
-    missing = required_columns - set(itinerary.columns)
-
-    if missing:
-        st.error(f"Your itinerary.csv is missing these columns: {', '.join(sorted(missing))}")
+        st.write("No itinerary items yet.")
         return
 
     day_items = itinerary[itinerary["day"].str.lower() == day_name.lower()]
@@ -288,7 +391,7 @@ def show_day(day_name: str, emoji: str):
 
     st.markdown("<div class='timeline'>", unsafe_allow_html=True)
 
-    for index, row in day_items.iterrows():
+    for _, row in day_items.iterrows():
         item_time = text(row.get("time", ""))
         title = text(row.get("title", ""))
         description = text(row.get("description", ""))
@@ -343,14 +446,7 @@ def show_place_cards(category_list, title: str, emoji: str):
     )
 
     if places.empty:
-        st.write("No places loaded.")
-        return
-
-    required_columns = {"name", "category", "notes", "website", "map_url"}
-    missing = required_columns - set(places.columns)
-
-    if missing:
-        st.error(f"Your places.csv is missing these columns: {', '.join(sorted(missing))}")
+        st.write("No places loaded yet.")
         return
 
     filtered = places[places["category"].isin(category_list)]
@@ -382,13 +478,69 @@ def show_place_cards(category_list, title: str, emoji: str):
             place_button("Open Map", place.get("map_url", ""))
 
 
-# -------------------------
-# Load data
-# -------------------------
+def show_add_event_form():
+    st.markdown(
+        "<h2 class='section-title'>➕ Add Event</h2>",
+        unsafe_allow_html=True
+    )
 
-places = safe_read_csv("data/places.csv")
-itinerary = safe_read_csv("data/itinerary.csv")
-packing = safe_read_csv("data/packing.csv")
+    st.write(
+        "Add a new itinerary item here. It will be saved to the Google Sheet "
+        "and remain available after the app restarts."
+    )
+
+    if data_source != "Google Sheets":
+        st.error(
+            "The app is currently using the local CSV backup, so new events cannot be saved permanently. "
+            "Check Streamlit Secrets and Google Sheet sharing."
+        )
+        return
+
+    with st.form("add_event_form", clear_on_submit=True):
+        day = st.selectbox("Day", ["Friday", "Saturday", "Sunday"])
+        event_time = st.text_input("Time", placeholder="Example: 6:30 PM")
+        title = st.text_input("Title", placeholder="Example: Dinner at ILDA")
+        category = st.selectbox(
+            "Category",
+            ["Food", "Drink", "Brewery", "Shopping", "Event", "Lodging", "Coffee", "Side Trip", "Other"]
+        )
+
+        place_options = [""] + sorted([p for p in places["name"].dropna().unique().tolist() if str(p).strip()])
+        place_name = st.selectbox("Place", place_options)
+
+        description = st.text_area(
+            "Description",
+            placeholder="Add notes for this event..."
+        )
+
+        priority = st.selectbox("Priority", ["Optional", "Planned", "Confirmed"])
+
+        submitted = st.form_submit_button("Save event")
+
+        if submitted:
+            if not title.strip():
+                st.error("Please add a title before saving.")
+                return
+
+            new_event = {
+                "day": day,
+                "time": event_time.strip(),
+                "title": title.strip(),
+                "category": category,
+                "place_name": place_name.strip(),
+                "description": description.strip(),
+                "priority": priority,
+            }
+
+            try:
+                append_itinerary_event(new_event)
+                st.success("Event saved to the itinerary.")
+                st.info("Refresh the app or switch tabs to see the new event in the timeline.")
+                st.cache_resource.clear()
+            except Exception as e:
+                st.error("Could not save the event to Google Sheets.")
+                st.exception(e)
+
 
 # -------------------------
 # Header / Hero
@@ -432,6 +584,7 @@ with col2:
     )
 
 st.warning("Security reminder: do not store the Airbnb door code in this public app.")
+st.caption(f"Data source: {data_source}")
 
 # -------------------------
 # Tabs
@@ -441,102 +594,72 @@ tabs = st.tabs([
     "Fri",
     "Sat",
     "Sun",
+    "Add Event",
     "Food",
     "Shops",
     "Side Trips",
     "Packing"
 ])
 
-# -------------------------
-# Friday
-# -------------------------
-
 with tabs[0]:
     show_day("Friday", "🎶")
-
-# -------------------------
-# Saturday
-# -------------------------
 
 with tabs[1]:
     show_day("Saturday", "🛍️")
 
-# -------------------------
-# Sunday
-# -------------------------
-
 with tabs[2]:
     show_day("Sunday", "☕")
 
-# -------------------------
-# Food & Drink
-# -------------------------
-
 with tabs[3]:
+    show_add_event_form()
+
+with tabs[4]:
     show_place_cards(
         ["Food", "Drink", "Brewery", "Coffee", "Sweets"],
         "Food & Drink",
         "🍽️"
     )
 
-# -------------------------
-# Shopping
-# -------------------------
-
-with tabs[4]:
+with tabs[5]:
     show_place_cards(
         ["Shopping", "Sweets"],
         "Boutique Shopping & Gifts",
         "🛍️"
     )
 
-# -------------------------
-# Side Trips
-# -------------------------
-
-with tabs[5]:
+with tabs[6]:
     show_place_cards(
         ["Side Trip", "Standby Side Trip"],
         "Standby Side Trips",
         "🚗"
     )
 
-# -------------------------
-# Packing
-# -------------------------
-
-with tabs[6]:
+with tabs[7]:
     st.markdown(
         "<h2 class='section-title'>🎒 Packing / Reminders</h2>",
         unsafe_allow_html=True
     )
 
     if packing.empty:
-        st.write("No packing list loaded.")
+        st.write("No packing list loaded yet.")
     else:
-        required_columns = {"item", "category", "notes"}
-        missing = required_columns - set(packing.columns)
+        for _, row in packing.iterrows():
+            item = row.get("item", "")
+            category = row.get("category", "")
+            notes = row.get("notes", "")
 
-        if missing:
-            st.error(f"Your packing.csv is missing these columns: {', '.join(sorted(missing))}")
-        else:
-            for _, row in packing.iterrows():
-                item = row.get("item", "")
-                category = row.get("category", "")
-                notes = row.get("notes", "")
+            st.markdown("<div class='packing-note'>", unsafe_allow_html=True)
 
-                st.markdown("<div class='packing-note'>", unsafe_allow_html=True)
+            st.checkbox(
+                str(item),
+                value=False,
+                key=f"packing_{item}"
+            )
 
-                st.checkbox(
-                    str(item),
-                    value=False,
-                    key=f"packing_{item}"
-                )
+            if category or notes:
+                st.caption(f"{category} — {notes}")
 
-                if category or notes:
-                    st.caption(f"{category} — {notes}")
-
-                st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
 # -------------------------
 # Footer
