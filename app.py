@@ -10,7 +10,7 @@ from google.oauth2.service_account import Credentials
 st.set_page_config(
     page_title="Sylva Weekend Itinerary",
     page_icon="🏔️",
-    layout="centered"
+    layout="centered",
 )
 
 # -------------------------
@@ -20,16 +20,33 @@ st.set_page_config(
 SHEET_ID = "1EVohk4RDve5QxR-xZQvJ9CR3X49rVfClFcQUEAo7upU"
 
 REQUIRED_ITINERARY_COLUMNS = [
-    "day", "time", "title", "category", "place_name", "description", "priority"
+    "day",
+    "time",
+    "title",
+    "category",
+    "place_name",
+    "description",
+    "priority",
 ]
 
 REQUIRED_PLACES_COLUMNS = [
-    "name", "category", "address", "lat", "lon", "website",
-    "map_url", "image_url", "image_credit", "notes"
+    "name",
+    "category",
+    "address",
+    "lat",
+    "lon",
+    "website",
+    "map_url",
+    "image_url",
+    "image_credit",
+    "notes",
 ]
 
 REQUIRED_PACKING_COLUMNS = [
-    "item", "category", "packed", "notes"
+    "item",
+    "category",
+    "packed",
+    "notes",
 ]
 
 # -------------------------
@@ -220,12 +237,13 @@ st.markdown(
     }
     </style>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
 # -------------------------
 # General helpers
 # -------------------------
+
 
 def text(value) -> str:
     if value is None:
@@ -253,16 +271,17 @@ def place_button(label: str, url: str):
 # Google Sheets helpers
 # -------------------------
 
+
 @st.cache_resource
 def get_gspread_client():
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
+        "https://www.googleapis.com/auth/drive",
     ]
 
     credentials = Credentials.from_service_account_info(
         st.secrets["gcp_service_account"],
-        scopes=scopes
+        scopes=scopes,
     )
 
     return gspread.authorize(credentials)
@@ -310,19 +329,15 @@ def load_data():
         itinerary_df, places_df, packing_df = load_data_from_google_sheets()
         return itinerary_df, places_df, packing_df, "Google Sheets"
     except Exception as e:
-    st.sidebar.warning("Using local CSV backup.")
-    st.sidebar.error("Google Sheets connection failed.")
-    st.sidebar.code(repr(e))
+        st.sidebar.warning("Using local CSV backup.")
+        st.sidebar.error("Google Sheets connection failed.")
+        st.sidebar.code(repr(e))
 
         itinerary_df = safe_read_csv("data/itinerary.csv", REQUIRED_ITINERARY_COLUMNS)
         places_df = safe_read_csv("data/places.csv", REQUIRED_PLACES_COLUMNS)
         packing_df = safe_read_csv("data/packing.csv", REQUIRED_PACKING_COLUMNS)
 
         return itinerary_df, places_df, packing_df, "local CSV backup"
-
-
-def clear_sheet_cache():
-    st.cache_resource.clear()
 
 
 # -------------------------
@@ -334,6 +349,7 @@ itinerary, places, packing, data_source = load_data()
 # -------------------------
 # Data helpers
 # -------------------------
+
 
 def get_place(place_name: str) -> Optional[pd.Series]:
     if places.empty or not place_name:
@@ -370,14 +386,14 @@ def day_theme(day_name: str) -> str:
 def show_day(day_name: str, emoji: str):
     st.markdown(
         f"<h2 class='section-title'>{emoji} {text(day_name)}</h2>",
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
     theme = day_theme(day_name)
     if theme:
         st.markdown(
             f"<div class='day-note'>{theme}</div>",
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
 
     if itinerary.empty:
@@ -443,7 +459,7 @@ def show_day(day_name: str, emoji: str):
 def show_place_cards(category_list, title: str, emoji: str):
     st.markdown(
         f"<h2 class='section-title'>{emoji} {text(title)}</h2>",
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
     if places.empty:
@@ -469,7 +485,7 @@ def show_place_cards(category_list, title: str, emoji: str):
                 <div>{notes}</div>
             </div>
             """,
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
 
         button_cols = st.columns(2)
@@ -482,7 +498,7 @@ def show_place_cards(category_list, title: str, emoji: str):
 def show_add_event_form():
     st.markdown(
         "<h2 class='section-title'>➕ Add Event</h2>",
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
     st.write(
@@ -503,15 +519,31 @@ def show_add_event_form():
         title = st.text_input("Title", placeholder="Example: Dinner at ILDA")
         category = st.selectbox(
             "Category",
-            ["Food", "Drink", "Brewery", "Shopping", "Event", "Lodging", "Coffee", "Side Trip", "Other"]
+            [
+                "Food",
+                "Drink",
+                "Brewery",
+                "Shopping",
+                "Event",
+                "Lodging",
+                "Coffee",
+                "Side Trip",
+                "Other",
+            ],
         )
 
-        place_options = [""] + sorted([p for p in places["name"].dropna().unique().tolist() if str(p).strip()])
+        if not places.empty and "name" in places.columns:
+            place_options = [""] + sorted(
+                [p for p in places["name"].dropna().unique().tolist() if str(p).strip()]
+            )
+        else:
+            place_options = [""]
+
         place_name = st.selectbox("Place", place_options)
 
         description = st.text_area(
             "Description",
-            placeholder="Add notes for this event..."
+            placeholder="Add notes for this event...",
         )
 
         priority = st.selectbox("Priority", ["Optional", "Planned", "Confirmed"])
@@ -554,7 +586,7 @@ st.markdown(
         <p>June 5–7, 2026 • Downtown Sylva, North Carolina</p>
     </div>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
 st.markdown(
@@ -567,7 +599,7 @@ st.markdown(
         enjoy breweries, and anchor Friday night around Concerts on the Creek.
     </div>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
 col1, col2 = st.columns(2)
@@ -575,13 +607,13 @@ col1, col2 = st.columns(2)
 with col1:
     st.link_button(
         "📍 Airbnb Map",
-        "https://www.google.com/maps/search/?api=1&query=498%20W%20Main%20St%20Sylva%20NC%2028779"
+        "https://www.google.com/maps/search/?api=1&query=498%20W%20Main%20St%20Sylva%20NC%2028779",
     )
 
 with col2:
     st.link_button(
         "🎶 Concert Map",
-        "https://www.google.com/maps/search/?api=1&query=Bridge%20Park%2076%20Railroad%20Ave%20Sylva%20NC%2028779"
+        "https://www.google.com/maps/search/?api=1&query=Bridge%20Park%2076%20Railroad%20Ave%20Sylva%20NC%2028779",
     )
 
 st.warning("Security reminder: do not store the Airbnb door code in this public app.")
@@ -591,16 +623,18 @@ st.caption(f"Data source: {data_source}")
 # Tabs
 # -------------------------
 
-tabs = st.tabs([
-    "Fri",
-    "Sat",
-    "Sun",
-    "Add Event",
-    "Food",
-    "Shops",
-    "Side Trips",
-    "Packing"
-])
+tabs = st.tabs(
+    [
+        "Fri",
+        "Sat",
+        "Sun",
+        "Add Event",
+        "Food",
+        "Shops",
+        "Side Trips",
+        "Packing",
+    ]
+)
 
 with tabs[0]:
     show_day("Friday", "🎶")
@@ -618,27 +652,27 @@ with tabs[4]:
     show_place_cards(
         ["Food", "Drink", "Brewery", "Coffee", "Sweets"],
         "Food & Drink",
-        "🍽️"
+        "🍽️",
     )
 
 with tabs[5]:
     show_place_cards(
         ["Shopping", "Sweets"],
         "Boutique Shopping & Gifts",
-        "🛍️"
+        "🛍️",
     )
 
 with tabs[6]:
     show_place_cards(
         ["Side Trip", "Standby Side Trip"],
         "Standby Side Trips",
-        "🚗"
+        "🚗",
     )
 
 with tabs[7]:
     st.markdown(
         "<h2 class='section-title'>🎒 Packing / Reminders</h2>",
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
     if packing.empty:
@@ -654,7 +688,7 @@ with tabs[7]:
             st.checkbox(
                 str(item),
                 value=False,
-                key=f"packing_{item}"
+                key=f"packing_{item}",
             )
 
             if category or notes:
@@ -672,5 +706,5 @@ st.markdown(
         Built as a mobile-friendly weekend trip guide • Best viewed from Safari and added to the iPhone Home Screen.
     </div>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
