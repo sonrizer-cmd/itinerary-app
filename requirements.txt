@@ -2,3 +2,5 @@ streamlit
 pandas
 pydeck
 PyYAML
+gspread
+google-auth
