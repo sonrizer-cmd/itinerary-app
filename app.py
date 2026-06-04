@@ -310,8 +310,9 @@ def load_data():
         itinerary_df, places_df, packing_df = load_data_from_google_sheets()
         return itinerary_df, places_df, packing_df, "Google Sheets"
     except Exception as e:
-        st.sidebar.warning("Using local CSV backup.")
-        st.sidebar.caption(f"Google Sheets issue: {e}")
+    st.sidebar.warning("Using local CSV backup.")
+    st.sidebar.error("Google Sheets connection failed.")
+    st.sidebar.code(repr(e))
 
         itinerary_df = safe_read_csv("data/itinerary.csv", REQUIRED_ITINERARY_COLUMNS)
         places_df = safe_read_csv("data/places.csv", REQUIRED_PLACES_COLUMNS)
